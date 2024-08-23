@@ -1,0 +1,344 @@
+---
+title: "Análisis VaR"
+author: "Victor Cochachin"
+date: "2023-08-26"
+output: pdf_document
+---
+
+#1)Descargando los datos
+
+```{r}
+
+library(quantmod)
+library(tidyverse)
+library(xts)
+library(PerformanceAnalytics)
+
+activos<-c("JPM","WMT","GE")
+getSymbols(activos, src = "yahoo", from ="2021-08-01", to = "2023-08-01", periodicity = "daily")
+
+#OBTENIENDO LOS PREFCIOS AJUSTADOS
+precio_ge=GE$GE.Adjusted
+precio_jpm=JPM$JPM.Adjusted
+precio_wmt=WMT$WMT.Adjusted
+```
+
+#2)Grafique la serie de tiempo de los precios de las acciones y los retornos continuos.
+```{r}
+
+retornos_ge <- na.omit(log(precio_ge/lag.xts(precio_ge)))
+retornos_jpm <- na.omit(log(precio_jpm/lag.xts(precio_jpm)))
+retornos_wmt <- na.omit(log(precio_wmt/lag.xts(precio_wmt)))
+plot(precio_ge)
+plot(precio_jpm)
+plot(precio_wmt)
+```
+#En General Electric observamos que la serie tiene un comportamiento aletaorio, tuvo una tendencia bajista y luego recupero su valor superando su media.
+#Podemos observar que las accioens de JPMorgan tuvo una tendencia bajista, pero para 2023 recuperó su valor. Por lo que tendrías una tendencia hacia su media.
+
+---------------------------------------------------------------------------------------------------------------------------
+
+#3)Realice un análisis de los primeros cuatro momentos estadísticos de la distribución de losretornos. Utilice tanto estadísticas como gráficos en su análisis
+```{r}
+#Analisis de "General electric"-----------------------------------------------------------------------------------
+mean(retornos_ge)*100  #porcentaje
+#El retorno promedio de  General electric es de 0.07%
+
+var(retornos_ge); sqrt(var(retornos_ge))
+#tiene una desviación estandar o reisgo es de 1.9%.
+
+skewness(retornos_ge)
+#Tiene una asímetria negativa lo que indicaria que tiene una cola izquierda extendidas o que hay valorews muy bajos en la distribución
+
+kurtosis(retornos_ge)
+#Tiene una curtosis mayor a 0 lo que podría indicar que tiene datos muy concentrados a su media
+
+
+#*Analisis de JPmorgan*-----------------------------------------------------------------------------------------------
+
+mean(retornos_jpm)*100  #porcentaje
+
+var(retornos_jpm); sqrt(var(retornos_jpm))
+
+skewness(retornos_jpm)
+#Tiene una asimetria levemente positiva, lo que podria indicar que la distribución tiene una cola derecha extendida, por loe que hay posibilidades de valores altos en su distribución
+
+kurtosis(retornos_jpm)
+#Tiene una kurtosis positiva, lo que indica que es leptocurtica, osea que sus datos están muy concentrado a su media
+
+
+#*Analisis de walmart*---------------------------------------------------------------------------------------------
+
+mean(retornos_wmt)*100  #porcentaje
+
+var(retornos_wmt); sqrt(var(retornos_wmt))
+
+skewness(retornos_wmt)
+#Tiene una asimetría negativa, lo que indica que tiene valores muy bajos en su distribución. Osea tiene una cola hacia la izquierda
+
+kurtosis(retornos_wmt)
+#Tiene una curtosis muy alto lo que indica que tiene valores muy cercanos a su media
+hist(retornos_wmt)
+
+
+```
+
+#4Convierta sus datos a datos semanales con to.period(x, period="weeks")
+```{r}
+#General electric---------------------------------------------------------------------------------------
+ge_p_week = to.period(precio_ge,period="weeks")
+ge_p_week=ge_p_week$precio_ge.Close
+ge_r_week=na.omit(log(ge_p_week/lag.xts(ge_p_week)))
+
+#jpmorgan--------------------------------------------------------------------------------------
+jpm_p_week=to.period(precio_jpm,period="weeks")
+jpm_p_week=jpm_p_week$precio_jpm.Close
+jpm_r_week=na.omit(log(jpm_p_week/lag.xts(jpm_p_week)))
+
+#Walmart--------------------------------------------------------------------------------------
+wmt_p_week=to.period(precio_wmt,period="weeks")
+wmt_p_week=wmt_p_week$precio_wmt.Close
+wmt_r_week=na.omit(log(wmt_p_week/lag.xts(wmt_p_week)))
+
+```
+
+#5Calcule el Valor en Riesgo (VAR) histórico a 7 días con un nivel de confianza del 95% y compare los resultados para las acciones asignadas. Realice un análisis de los resultados obtenidos
+```{r}
+
+#Var Historico de  General electric------------------------------------------------------------------------
+W=1000#monto invertido
+alpha <- 0.05
+q1 <- quantile(x=ge_r_week, alpha)
+varg <- (exp(q1)-1)
+print(varg)
+
+mu_g <- mean(ge_r_week)
+s_g <- sd(ge_r_week)
+
+perdida_historica_g=W*varg
+
+print(perdida_historica_g)
+#Al 95% de confinza se espera que la perdida maxima en los proximos 7 días sea de -70.25 dolares por cada mil invertidos.
+
+
+#Var JPMorgan-----------------------------------------------------------------------------------------------------
+q2 <- quantile(x=jpm_r_week, alpha)
+varj <- (exp(q2)-1)
+print(varj)
+perdida_historica_jpm=W*varj
+print(perdida_historica_jpm)
+
+mu_jpm <- mean(jpm_r_week)
+s_jpm <- sd(jpm_r_week)
+print(mu_jpm)
+
+
+#Al 95% de confinza se espera que la perdida maxima en los proximos 7 días sea de -58.73 dolares por cada mil invertidos.
+
+#Var wmt------------------------------------------------------------------------------------------------------------------------
+q3 <- quantile(x=wmt_r_week, alpha)
+varw <- (exp(q3)-1)
+print(varw)
+
+mu_wmt <- mean(wmt_r_week)
+s_wmt <- sd(wmt_r_week)
+print(mu_wmt)
+
+perdida_historica_w=W*varw
+print(perdida_historica_w)
+#Al 95% de confinza se espera que la perdida maxima en los proximos 7 días sea de -39.07 dolares por cada mil invertidos.
+
+```
+
+#6) Utilice el Movimiento browniano geométrico para calcular el VAR Monte-Carlo a 7 días con un nivel de confianza del 99%. Compare sus resultados para las acciones asignadas. Analice sus resultados.
+```{r}
+#General Electril-----------------------------------------------------------------------------------------------------
+VAR.mc <- numeric()
+set.seed(10000)
+for (i in 1:1000) {
+  changes_g <- rnorm(length(ge_r_week),mean=1+mu_g,sd=s_g)
+  sim.ts_g <- cumprod(c(as.numeric(ge_p_week[1]),changes_g))
+  sim.R_g <- diff(log(sim.ts_g))
+  sim.q_g <- quantile(sim.R_g,0.01,na.rm = T)
+  sim.VAR.g <- exp(sim.q_g)-1
+  VAR.mc[i] <- sim.VAR.g#esta es la perdida
+}
+mean(VAR.mc*W)
+sd(VAR.mc*W)
+
+#Al 99% de confinza se espera que la perdida maxima en los proximos 7 días sea de -97.020 dolares por cada mil invertidos.
+# Tiene una desviaciópn de 14.3, que es el monto que podría varias su renendimiento
+
+#JPM-------------------------------------------------------------------------------------------------------------------
+VAR.mc.jpm <- numeric()
+set.seed(10000)
+for (i in 1:1000) {
+  changes_j <- rnorm(length(jpm_r_week),mean=1+mu_jpm,sd=s_jpm)
+  sim.ts_j <- cumprod(c(as.numeric(jpm_p_week[1]),changes_j))
+  sim.R_j <- diff(log(sim.ts_j))
+  sim.q_j <- quantile(sim.R_j,0.01,na.rm = T)
+  sim.VAR.jpm <- exp(sim.q_j)-1
+  VAR.mc.jpm[i] <- sim.VAR.jpm#esta es la perdida
+}
+mean(VAR.mc.jpm*W)
+sd(VAR.mc.jpm*W)
+
+#Al 99% de confianza se espera que la perdida maxima en los proximos 7 días sea de -82.15dolares por cada mil invertidos.
+
+#WMT------------------------------------------------------------------------------------------------------------------------
+VAR.mc.wmt <- numeric()
+set.seed(10000)
+for (i in 1:1000) {
+  changes_w <- rnorm(length(wmt_r_week),mean=1+mu_wmt,sd=s_wmt)
+  sim.ts_w <- cumprod(c(as.numeric(wmt_p_week[1]),changes_w))
+  sim.R_w <- diff(log(sim.ts_w))
+  sim.q_w <- quantile(sim.R_w,0.01,na.rm = T)
+  sim.VAR.wmt <- exp(sim.q_w)-1
+  VAR.mc.wmt[i] <- sim.VAR.wmt#esta es la perdida
+}
+mean(VAR.mc.wmt*W)
+sd(VAR.mc.wmt*W)
+plot(density(VAR.mc.wmt))
+#Al 99% de confianza se espera que la perdida maxima en los proximos 7 días sea de -72.035 dolares por cada mil invertidos.
+
+
+```
+
+
+#7) Determine el intervalo de confianza del Valor en Riesgo obtenido en la simulación anterior.Realice un análisis de los resultados obtenidos en términos de su significado y utilidad.
+
+```{r}
+#General Electric
+quantile(VAR.mc*W,0.025)
+quantile(VAR.mc*W,0.975)
+#Los cuantiles 0.025 y 0.975 nos dicen que la maxima perdida se encontratria entre estos valores $-71 y $-127 dolares por cada 1000 dolares invertidos
+
+#JPM
+quantile(VAR.mc.jpm*W,0.025)
+quantile(VAR.mc.jpm*W,0.975)
+
+#Los cuantiles 0.025 y 0.975 nos dicen que la maxima perdida se encontratria entre estos valores $-61.20 y $-107.33 dolares por cada 1000 dolares invertidos
+
+#WMT
+quantile(VAR.mc.wmt*W,0.025)
+quantile(VAR.mc.wmt*W,0.975)
+
+#Los cuantiles 0.025 y 0.975 nos dicen que la maxima perdida se encontratria entre estos valores $-53.49 y $-94.32 dolares por cada 1000 dolares invertidos
+
+
+```
+
+
+#8) Utilice el índice de Dow Jones para determinar el riesgo sistemático o exposición a movimientos generales del mercado de cada una de las acciones asignadas. Verifique sus resultados con una prueba de hipótesis
+```{r}
+t=0.02 #tasa libre dde riesgo
+getSymbols("^DJI", src = "yahoo", from = "2021-08-01", to = "2023-08-01", periodicity = "daily")
+
+spy=DJI$DJI.Adjusted
+
+rM <- na.omit(log(spy/lag.xts(spy)))
+
+Erm=rM-0.02 #Exceso de retorno del mercado respecto a la tasa de mercado
+
+#Beta General Electric--------------------------------------------------------
+Beta_ge <- cov(retornos_ge,rM)/var(rM)
+print(Beta_ge)
+Rge=retornos_ge-0.02#Exceso de retorno del activo GE respecto a la tasa libre de riesgo
+
+regresion1=lm(Rge~rM)
+summary(regresion1)
+#Obtenemos un intercepto negativo, lo que quiere decir que el activo está sobrevaluado y con un gran potencia de depreciaciòn.
+#Por otro lado obtenemos un Beta mayor a 1, quiere decir que la accion reacciona con cambios más que proporcionales a los movimientos del mercado.
+
+#Beta JP morgan--------------------------------------------------------------
+Beta_jp <- cov(retornos_jpm,rM)/var(rM)
+print(Beta_jp)
+RgJP=retornos_jpm-0.02#Exceso de retorno del activo JPM respecto a la tasa libre de riesgo
+regresion2=lm(RgJP~rM)
+summary(regresion2)
+
+#Obteneemos un intercepto negativo, lo que quiere decir que el activo está sobrevaluado y con un gran potencia de depreciaciòn.
+#Por otro lado obtenemos un Beta mayor a 1, quiere decir que la accion reacciona con cambios más que proporcionales a los movimientos del mercado.
+
+
+#Beta Walmart-------------------------------------------------------
+Beta_wmt <- cov(retornos_wmt,rM)/var(rM)
+print(Beta_wmt)
+
+RgWMT=retornos_wmt-0.02#Exceso de retorno del activo WMT respecto a la tasa libre de riesgo
+regresion3=lm(RgWMT~rM)
+summary(regresion3)
+
+#Obtenemos un intercepto negativo, lo que quiere decir que el activo está sobrevaluado y con un gran potencial de depreciaciòn.
+#Por otro lado obtenemos un Beta menor a 1, quiere decir que la accion reacciona con cambios proporcionalmente menor al del mercado. Si el Mercado crece en 1%, Walmart klo hará en 0.5
+
+#Puede ser considerado un activo financiero Defensivo
+
+#Conclusión general:
+#Los tres modelos en conjunto tienen un R-cuadrado bajo, pero sus coeficiente son significativos tanto individual como en cojunto.
+#De las acciones la de GeneralElectric es la que mayor riesgo sistemático tiene, y Walmar la que menor riesgo sistematico tiene.
+```
+
+
+#9Estime la persistencia con la que cada una de las acciones asignadas reacciona a buenas o
+#malas noticias, asumiendo que la varianza condicionada sigue dicho proceso GARCH(1,1).
+#Compare y analice sus resultados
+
+```{r}
+
+library(rugarch)
+#General Electric-------------------------------------------------------------------------------------------
+
+spec_garch2_GE <- ugarchspec(variance.model = list(model = "sGARCH",
+                                                garchOrder = c(1,1)),
+                          mean.model = list(armaOrder = c(0,0),
+                                            include.mean = FALSE),
+                          distribution.model = "norm")
+garch_model2_GE <- ugarchfit(spec_garch2_GE, data = ge_r_week)
+coef(garch_model2_GE)
+
+#Obtenemos que (ht=3.9e-08+6.15e-10(Et)+9.9e-1(ht)), vemos que tanto el intercepto (omega) y el parámetro alpha son coeficientes muy pequeños, por lo que no tienen mucho impacto en el valor de la acciòn.
+
+#Por otro lado el coeficiente de la varianza condicional pasada es de 0.9, lo que signifca que la varianza condicionada tiene mayor impacto en el rendimiento de sus errores o noticias pasadas.
+
+#Solo  la varianza condicional pasada(BETA1) es significativa dentro del modelo
+
+#JPM Morgan-------------------------------------------------------------------------------------------
+
+spec_garch2_JP <- ugarchspec(variance.model = list(model = "sGARCH",
+                                                   garchOrder = c(1,1)),
+                             mean.model = list(armaOrder = c(0,0),
+                                               include.mean = FALSE),
+                             distribution.model = "norm")
+garch_model2_JP <- ugarchfit(spec_garch2_JP, data = jpm_r_week)
+coef(garch_model2_JP)
+
+#Obtenemos que ht=4.4e-07+1.33e-09(Et)+9.9e-1(ht), vemos que tanto el intercepto omega como el coeficiente alpha son variables muy pequeñas, por lo que no tienen mucho impacto en el vlaor de la acción
+
+#Por otro lado el coeficiente de la varianza condicional pasada es de 0.9, lo que signifca que la varianza condicionada teine mayor imacto en el rendimiento de sus errores o noticias pasadas.
+
+#Solo  la varianza condicional pasada(BETA1) es significativa dentro del modelo
+
+#Walmart-------------------------------------------------------------------------------------------
+spec_garch2_WMT <- ugarchspec(variance.model = list(model = "sGARCH",
+                                                   garchOrder = c(1,1)),
+                             mean.model = list(armaOrder = c(0,0),
+                                               include.mean = FALSE),
+                             distribution.model = "norm")
+garch_model2_WMT <- ugarchfit(spec_garch2_WMT, data = wmt_r_week)
+coef(garch_model2_WMT)
+
+#Obtenemos que ht=3.08-12+1.90e-06(Et)+9.96e-1(ht), vemos que tanto omega como alpha son variables muy pequeños por lo que no tienen mucho impacto en el valor de la acción
+
+#Por otro lado el coeficiente de la varianza condicional pasada es de 0.9, lo que signifca que la varianza condicionada tiene mayor impacto en el rendimiento del activo financiero.
+
+#Solo  la varianza condicional pasada(BETA1) es significativa dentro del modelo
+
+#Conclusiones generales:
+
+#Podemos decir que de las 3 acciones, JPMorgan es la que mayor prima de riesgo debe ofrecer ya que posse (omega) una mayor varianza al largo plazo
+
+#Por otro lado Walmart con un alpha de 1.9e-06, es la que menor riesgo tiene antes noticias o impactos de polìtica
+
+#Todas se ven afectadas de casi la misma manera por su varianza condicional pasada
+```
